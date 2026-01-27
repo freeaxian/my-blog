@@ -99,7 +99,7 @@ function generateDecorationsForBlock(
 
     for (let i = 0; i < tokensData.tokens.length; i++) {
       const line = tokensData.tokens[i];
-      
+
       // Token Merging: 合并相同样式的相邻 Token 以减少 DOM 节点
       let currentMerge: { from: number; style: string } | null = null;
 
@@ -113,7 +113,7 @@ function generateDecorationsForBlock(
         const pmText = code.slice(textOffset, textOffset + tokenLen);
         if (pmText !== token.content) {
           console.warn(
-            `Shiki Desync at pos ${pos}: Expected '${token.content}', got '${pmText}'`
+            `Shiki Desync at pos ${pos}: Expected '${token.content}', got '${pmText}'`,
           );
           return decorations; // 返回已生成的，防止后续乱码
         }
@@ -126,7 +126,7 @@ function generateDecorationsForBlock(
             decorations.push(
               Decoration.inline(currentMerge.from, from, {
                 style: currentMerge.style,
-              })
+              }),
             );
           }
           // 开始新的合并段
@@ -141,7 +141,7 @@ function generateDecorationsForBlock(
         decorations.push(
           Decoration.inline(currentMerge.from, startPos + textOffset, {
             style: currentMerge.style,
-          })
+          }),
         );
       }
 
@@ -196,7 +196,8 @@ export interface ShikiPluginOptions {
 type ShikiUpdatePayload = boolean | { pos: number };
 
 export function createShikiPlugin({ name }: ShikiPluginOptions): Plugin {
-  let highlighterInstance: Awaited<ReturnType<typeof getHighlighter>> | null = null;
+  let highlighterInstance: Awaited<ReturnType<typeof getHighlighter>> | null =
+    null;
   let currentView: EditorView | null = null;
   let debounceTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -233,7 +234,7 @@ export function createShikiPlugin({ name }: ShikiPluginOptions): Plugin {
         tr: Transaction,
         oldDecorations: DecorationSet,
         _oldState: EditorState,
-        newState: EditorState
+        newState: EditorState,
       ): DecorationSet {
         if (!highlighterInstance) return DecorationSet.empty;
 
@@ -244,7 +245,7 @@ export function createShikiPlugin({ name }: ShikiPluginOptions): Plugin {
         if (isShikiReady || shikiUpdate === true) {
           const blocks = findAllCodeBlocks(newState.doc, name);
           const decorations = blocks.flatMap(({ pos, node }) =>
-            generateDecorationsForBlock(pos, node, highlighterInstance!)
+            generateDecorationsForBlock(pos, node, highlighterInstance!),
           );
           return DecorationSet.create(newState.doc, decorations);
         }
@@ -265,13 +266,13 @@ export function createShikiPlugin({ name }: ShikiPluginOptions): Plugin {
           if (node && node.type.name === name) {
             // 1. 移除该块旧的 decorations
             newDecorations = newDecorations.remove(
-              newDecorations.find(pos, pos + node.nodeSize)
+              newDecorations.find(pos, pos + node.nodeSize),
             );
             // 2. 生成新的
             const blockDecos = generateDecorationsForBlock(
               pos,
               node,
-              highlighterInstance
+              highlighterInstance,
             );
             // 3. 添加
             return newDecorations.add(newState.doc, blockDecos);
@@ -312,7 +313,7 @@ export function createShikiPlugin({ name }: ShikiPluginOptions): Plugin {
                       // 或者可以通过 currentView.state.doc.resolve(pos) 重新定位
                       const updateTr = currentView.state.tr.setMeta(
                         "shikiUpdate",
-                        { pos }
+                        { pos },
                       );
                       currentView.dispatch(updateTr);
                     }
@@ -322,12 +323,12 @@ export function createShikiPlugin({ name }: ShikiPluginOptions): Plugin {
 
                 // 常规同步更新 (小代码块)
                 newDecorations = newDecorations.remove(
-                  newDecorations.find(pos, pos + node.nodeSize)
+                  newDecorations.find(pos, pos + node.nodeSize),
                 );
                 const blockDecos = generateDecorationsForBlock(
                   pos,
                   node,
-                  highlighterInstance!
+                  highlighterInstance!,
                 );
                 newDecorations = newDecorations.add(newState.doc, blockDecos);
 

@@ -15,9 +15,19 @@ export const createCacheHeaderMiddleware = (
 ) => {
   return createMiddleware({ type: "function" }).server(async ({ next }) => {
     const result = await next();
-    Object.entries(CACHE_CONTROL[strategy]).forEach(([k, v]) => {
-      setResponseHeader(k, v);
-    });
+
+    // 只在客户端直接请求 Server Function 时设置 headers
+    // SSR 期间请求 Accept header 为 text/html，此时不设置 headers，让 route headers() 生效
+    // 客户端 React Query 请求 Accept header 包含 application/json
+    const accept = getRequestHeader("Accept");
+    const isClientRequest = accept?.includes("application/json");
+
+    if (isClientRequest) {
+      Object.entries(CACHE_CONTROL[strategy]).forEach(([k, v]) => {
+        setResponseHeader(k, v);
+      });
+    }
+
     return result;
   });
 };
@@ -87,6 +97,38 @@ export const adminMiddleware = createMiddleware({ type: "function" })
   });
 
 /* ======================= Rate Limiting ====================== */
+
+// Public rate limit middleware - 只用 IP，不依赖 session（避免 Set-Cookie 导致缓存失效）
+export const createPublicRateLimitMiddleware = (
+  options: RateLimitOptions & { key?: string },
+) => {
+  return createMiddleware({ type: "function" })
+    .middleware([dbMiddleware])
+    .server(async ({ next, context }) => {
+      const identifier = getRequestHeader("cf-connecting-ip") || "unknown";
+      const scope = options.key || "default";
+      const uniqueIdentifier = `${identifier}:${scope}`;
+
+      const id = context.env.RATE_LIMITER.idFromName(uniqueIdentifier);
+      const rateLimiter = context.env.RATE_LIMITER.get(id);
+
+      const result = await rateLimiter.checkLimit(options);
+
+      if (!result.allowed) {
+        throw Response.json(
+          {
+            message: "Too Many Requests",
+            retryAfterSeconds: result.retryAfterMs / 1000,
+          },
+          { status: 429 },
+        );
+      }
+
+      return next();
+    });
+};
+
+// Session-aware rate limit middleware - 用 user ID 或 IP（用于需要 session 的路由）
 export const createRateLimitMiddleware = (
   options: RateLimitOptions & { key?: string },
 ) => {
