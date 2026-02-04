@@ -86,6 +86,7 @@ export function PostEditor({ initialData, onSave }: PostEditorProps) {
     isGeneratingTags,
     handleGenerateTags,
     isDirty: isPostDirty,
+    contentStats,
   } = usePostActions({
     postId: initialData.id,
     post,
@@ -384,15 +385,11 @@ export function PostEditor({ initialData, onSave }: PostEditorProps) {
         <div className="flex items-center gap-6 text-muted-foreground">
           <div className="flex items-center gap-2">
             <span>字符</span>
-            <span className="text-foreground">
-              {JSON.stringify(post.contentJson || "").length}
-            </span>
+            <span className="text-foreground">{contentStats.chars}</span>
           </div>
           <div className="flex items-center gap-2">
             <span>词数</span>
-            <span className="text-foreground">
-              {Math.ceil(JSON.stringify(post.contentJson || "").length / 5)}
-            </span>
+            <span className="text-foreground">{contentStats.words}</span>
           </div>
         </div>
 
