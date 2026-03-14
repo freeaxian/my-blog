@@ -1,12 +1,12 @@
-import { z } from "zod";
 import {
   createInsertSchema,
   createSelectSchema,
   createUpdateSchema,
 } from "drizzle-zod";
+import { z } from "zod";
+import { TagSelectSchema } from "@/features/tags/tags.schema";
 import type { Post, PostStatus, Tag } from "@/lib/db/schema";
 import { POST_STATUSES, PostsTable } from "@/lib/db/schema";
-import { TagSelectSchema } from "@/features/tags/tags.schema";
 
 // Date fields need to accept both Date objects and ISO strings (for JSON serialization)
 const coercedDate = z.union([z.date(), z.string().pipe(z.coerce.date())]);
@@ -16,9 +16,13 @@ export const PostSelectSchema = createSelectSchema(PostsTable, {
   publishedAt: coercedDateNullable,
   createdAt: coercedDate,
   updatedAt: coercedDate,
+}).omit({
+  publicContentJson: true,
 });
 export const PostInsertSchema = createInsertSchema(PostsTable);
-export const PostUpdateSchema = createUpdateSchema(PostsTable);
+export const PostUpdateSchema = createUpdateSchema(PostsTable).omit({
+  publicContentJson: true,
+});
 
 export const PostItemSchema = PostSelectSchema.omit({
   contentJson: true,
@@ -97,6 +101,7 @@ export const PreviewSummaryInputSchema = PostSelectSchema.pick({
 export const StartPostProcessInputSchema = z.object({
   id: z.number(),
   status: z.enum(POST_STATUSES),
+  clientToday: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
 
 export type GenerateSlugInput = z.infer<typeof GenerateSlugInputSchema>;
@@ -107,17 +112,19 @@ export type UpdatePostInput = z.infer<typeof UpdatePostInputSchema>;
 export type DeletePostInput = z.infer<typeof DeletePostInputSchema>;
 export type PreviewSummaryInput = z.infer<typeof PreviewSummaryInputSchema>;
 export type StartPostProcessInput = z.infer<typeof StartPostProcessInputSchema>;
-export type PostListItem = Omit<Post, "contentJson"> & {
+export type PostListItem = Omit<Post, "contentJson" | "publicContentJson"> & {
   tags?: Array<Tag>;
 };
 
 export type PostListResponse = z.infer<typeof PostListResponseSchema>;
 export type PostItem = z.infer<typeof PostItemSchema>;
+export type PostWithToc = z.infer<typeof PostWithTocSchema>;
 
 export const POSTS_CACHE_KEYS = {
   list: (version: string, limit: number, cursor: number, tagName: string) =>
     ["posts", "list", version, limit, cursor, tagName] as const,
   detail: (version: string, slug: string) => [version, "post", slug] as const,
-  related: (slug: string) => ["posts", "related-ids", slug] as const,
+  related: (slug: string, limit?: number) =>
+    ["posts", "related-ids", slug, limit] as const,
   syncHash: (id: number) => `post_hash:${id}` as const,
 } as const;

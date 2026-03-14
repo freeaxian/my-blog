@@ -1,4 +1,8 @@
 import { z } from "zod";
+import * as AiService from "@/features/ai/ai.service";
+import * as CacheService from "@/features/cache/cache.service";
+import { syncPostMedia } from "@/features/posts/data/post-media.data";
+import * as PostRepo from "@/features/posts/data/posts.data";
 import type {
   DeletePostInput,
   FindPostByIdInput,
@@ -12,20 +16,29 @@ import type {
   StartPostProcessInput,
   UpdatePostInput,
 } from "@/features/posts/posts.schema";
-import * as CacheService from "@/features/cache/cache.service";
-import { syncPostMedia } from "@/features/posts/data/post-media.data";
-import * as PostRepo from "@/features/posts/data/posts.data";
 import {
   POSTS_CACHE_KEYS,
   PostListResponseSchema,
   PostWithTocSchema,
 } from "@/features/posts/posts.schema";
-import * as AiService from "@/features/ai/ai.service";
-import { generateTableOfContents } from "@/features/posts/utils/toc";
-import { convertToPlainText, slugify } from "@/features/posts/utils/content";
-import { purgePostCDNCache } from "@/lib/invalidate";
-import * as SearchService from "@/features/search/search.service";
+import {
+  convertToPlainText,
+  highlightCodeBlocks,
+  slugify,
+} from "@/features/posts/utils/content";
+import { isFuturePublishDate } from "@/features/posts/utils/date";
 import { calculatePostHash } from "@/features/posts/utils/sync";
+import { generateTableOfContents } from "@/features/posts/utils/toc";
+import * as SearchService from "@/features/search/service/search.service";
+import { err, ok } from "@/lib/errors";
+import { purgePostCDNCache } from "@/lib/invalidate";
+
+function stripPublicContentJson<T extends { publicContentJson?: unknown }>(
+  post: T,
+): Omit<T, "publicContentJson"> {
+  const { publicContentJson: _publicContentJson, ...rest } = post;
+  return rest;
+}
 
 export async function getPostsCursor(
   context: DbContext & { executionCtx: ExecutionContext },
@@ -68,17 +81,24 @@ export async function findPostBySlug(
     });
     if (!post) return null;
 
-    let contentJson = post.contentJson;
-    if (contentJson) {
-      const { highlightCodeBlocks } =
-        await import("@/features/posts/utils/content");
+    let contentJson = post.publicContentJson ?? post.contentJson;
+    // Backward-compatible fallback for posts that haven't been reprocessed yet.
+    // New publishes should read pre-highlighted content from `publicContentJson`.
+    if (!post.publicContentJson && contentJson) {
       contentJson = await highlightCodeBlocks(contentJson);
+      context.executionCtx.waitUntil(
+        PostRepo.updatePublicContentSnapshot(
+          context.db,
+          post.id,
+          contentJson,
+        ).then(() => undefined),
+      );
     }
 
     return {
-      ...post,
+      ...stripPublicContentJson(post),
       contentJson,
-      toc: generateTableOfContents(post.contentJson),
+      toc: generateTableOfContents(contentJson),
     };
   };
 
@@ -102,7 +122,7 @@ export async function getRelatedPosts(
 
   // Cache IDs for 7 days (long-lived cache)
   // This key is NOT dependent on version, so it persists across publishes
-  const cacheKey = POSTS_CACHE_KEYS.related(data.slug);
+  const cacheKey = POSTS_CACHE_KEYS.related(data.slug, data.limit);
   const cachedIds = await CacheService.get(
     context,
     cacheKey,
@@ -138,15 +158,15 @@ export async function generateSummaryByPostId({
   const post = await PostRepo.findPostById(context.db, postId);
 
   if (!post) {
-    throw new Error("Post not found");
+    return err({ reason: "POST_NOT_FOUND" });
   }
 
   // 如果已经存在摘要，则直接返回
-  if (post.summary && post.summary.trim().length > 0) return post;
+  if (post.summary && post.summary.trim().length > 0) return ok(post);
 
   const plainText = convertToPlainText(post.contentJson);
   if (plainText.length < 100) {
-    return post;
+    return ok(post);
   }
 
   const { summary } = await AiService.summarizeText(context, plainText);
@@ -155,7 +175,11 @@ export async function generateSummaryByPostId({
     summary,
   });
 
-  return updatedPost;
+  if (!updatedPost) {
+    return err({ reason: "POST_NOT_FOUND" });
+  }
+
+  return ok(stripPublicContentJson(updatedPost));
 }
 
 // ============ Admin Service Methods ============
@@ -246,7 +270,7 @@ export async function findPostBySlugAdmin(
   });
   if (!post) return null;
   return {
-    ...post,
+    ...stripPublicContentJson(post),
     toc: generateTableOfContents(post.contentJson),
   };
 }
@@ -282,7 +306,7 @@ export async function findPostById(
     isSynced = dbHash === kvHash;
   }
 
-  return { ...post, isSynced, hasPublicCache };
+  return { ...stripPublicContentJson(post), isSynced, hasPublicCache };
 }
 
 export async function updatePost(
@@ -291,7 +315,7 @@ export async function updatePost(
 ) {
   const updatedPost = await PostRepo.updatePost(context.db, data.id, data.data);
   if (!updatedPost) {
-    throw new Error("Post not found");
+    return err({ reason: "POST_NOT_FOUND" });
   }
 
   if (data.data.contentJson !== undefined) {
@@ -300,7 +324,7 @@ export async function updatePost(
     );
   }
 
-  return findPostById(context, { id: updatedPost.id });
+  return ok(updatedPost);
 }
 
 export async function deletePost(
@@ -308,7 +332,9 @@ export async function deletePost(
   data: DeletePostInput,
 ) {
   const post = await PostRepo.findPostById(context.db, data.id);
-  if (!post) return;
+  if (!post) {
+    return err({ reason: "POST_NOT_FOUND" });
+  }
 
   await PostRepo.deletePost(context.db, data.id);
 
@@ -336,6 +362,8 @@ export async function deletePost(
       CacheService.deleteKey(context, POSTS_CACHE_KEYS.syncHash(data.id)),
     );
   }
+
+  return ok({ success: true });
 }
 
 export async function previewSummary(
@@ -367,11 +395,15 @@ export async function startPostProcessWorkflow(
     }
   }
 
+  const isFuture =
+    !!publishedAtISO && isFuturePublishDate(publishedAtISO, data.clientToday);
+
   await context.env.POST_PROCESS_WORKFLOW.create({
     params: {
       postId: data.id,
       isPublished: data.status === "published",
       publishedAt: publishedAtISO,
+      isFuturePost: isFuture,
     },
   });
 
@@ -386,13 +418,10 @@ export async function startPostProcessWorkflow(
   }
 
   // If this is a future post, create a new scheduled publish workflow
-  if (data.status === "published" && publishedAtISO) {
-    const publishDate = new Date(publishedAtISO);
-    if (publishDate.getTime() > Date.now()) {
-      await context.env.SCHEDULED_PUBLISH_WORKFLOW.create({
-        id: scheduledId,
-        params: { postId: data.id, publishedAt: publishedAtISO },
-      });
-    }
+  if (data.status === "published" && isFuture) {
+    await context.env.SCHEDULED_PUBLISH_WORKFLOW.create({
+      id: scheduledId,
+      params: { postId: data.id, publishedAt: publishedAtISO! },
+    });
   }
 }

@@ -1,17 +1,30 @@
-import { clientEnv } from "@/lib/env/client.env";
-
-const env = clientEnv();
+import type { SiteConfig } from "@/features/config/site-config.schema";
 
 export const blogConfig = {
-  title: env.VITE_BLOG_TITLE || "Flare Stack Blog",
-  name: env.VITE_BLOG_NAME || "blog",
-  author: env.VITE_BLOG_AUTHOR || "作者",
+  title: "站点名称",
+  author: "作者",
   description:
-    env.VITE_BLOG_DESCRIPTION || "这是博客的描述，写一段话介绍一下这个博客，",
+    "这是我的个人网站和博客。在这里，我主要分享与技术和生活相关的内容。欢迎阅读！",
   social: {
-    github: env.VITE_BLOG_GITHUB || "https://github.com/example",
-    email: env.VITE_BLOG_EMAIL || "demo@example.com",
+    github: "https://github.com/example",
+    email: "example@email.com",
   },
-};
-
-export type BlogConfig = typeof blogConfig;
+  icons: {
+    faviconSvg: "/favicon.svg",
+    faviconIco: "/favicon.ico",
+    favicon96: "/favicon-96x96.png",
+    appleTouchIcon: "/apple-touch-icon.png",
+    webApp192: "/web-app-manifest-192x192.png",
+    webApp512: "/web-app-manifest-512x512.png",
+  },
+  theme: {
+    default: {
+      navBarName: "导航栏名称",
+    },
+    fuwari: {
+      homeBg: "/images/home-bg.webp",
+      avatar: "/images/avatar.png",
+      primaryHue: 250,
+    },
+  },
+} as const satisfies SiteConfig;

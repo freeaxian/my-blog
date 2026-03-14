@@ -1,5 +1,12 @@
-import { Link, createFileRoute, redirect } from "@tanstack/react-router";
-import { RegisterForm } from "@/features/auth/components/register-form";
+import {
+  createFileRoute,
+  redirect,
+  useRouteContext,
+} from "@tanstack/react-router";
+import theme from "@theme";
+import { Turnstile, useTurnstile } from "@/components/common/turnstile";
+import { useRegisterForm } from "@/features/auth/hooks";
+import { m } from "@/paraglide/messages";
 
 export const Route = createFileRoute("/_auth/register")({
   beforeLoad: ({ context }) => {
@@ -11,37 +18,39 @@ export const Route = createFileRoute("/_auth/register")({
   head: () => ({
     meta: [
       {
-        title: "注册",
+        title: m.register_title(),
       },
     ],
   }),
 });
 
 function RouteComponent() {
-  return (
-    <div className="space-y-12">
-      <header className="text-center space-y-3">
-        <p className="text-[10px] font-mono uppercase tracking-[0.4em] text-muted-foreground/60">
-          [ REGISTER ]
-        </p>
-        <h1 className="text-2xl font-serif font-medium tracking-tight">注册</h1>
-      </header>
+  const { isEmailConfigured } = useRouteContext({ from: "/_auth" });
+  const {
+    isPending: turnstilePending,
+    token: turnstileToken,
+    reset: resetTurnstile,
+    turnstileProps,
+  } = useTurnstile("register");
 
-      <div className="space-y-10">
-        <RegisterForm />
+  const registerForm = useRegisterForm({
+    turnstileToken,
+    turnstilePending,
+    resetTurnstile,
+    isEmailConfigured,
+  });
 
-        <div className="text-center pt-4">
-          <p className="text-[10px] font-mono text-muted-foreground/50 tracking-wider">
-            已有账户?{" "}
-            <Link
-              to="/login"
-              className="text-foreground hover:opacity-70 transition-opacity ml-1"
-            >
-              [ 前往登录 ]
-            </Link>
-          </p>
-        </div>
-      </div>
+  const turnstileElement = (
+    <div className="flex justify-center">
+      <Turnstile {...turnstileProps} />
     </div>
+  );
+
+  return (
+    <theme.RegisterPage
+      isEmailConfigured={isEmailConfigured}
+      registerForm={{ ...registerForm, turnstileProps }}
+      turnstileElement={turnstileElement}
+    />
   );
 }

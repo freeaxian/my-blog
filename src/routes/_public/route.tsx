@@ -1,48 +1,65 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Outlet, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
+import theme from "@theme";
+import { useEffect } from "react";
 import { toast } from "sonner";
-import { Footer } from "@/components/layout/footer";
-import { MobileMenu } from "@/components/layout/mobile-menu";
-import { Navbar } from "@/components/layout/navbar";
-import { authClient } from "@/lib/auth/auth.client";
-import { CACHE_CONTROL } from "@/lib/constants";
 import { AUTH_KEYS } from "@/features/auth/queries";
+import { getThemePreloadImages } from "@/features/theme/site-config.helpers";
+import { authClient } from "@/lib/auth/auth.client";
+import { getLogoutAuthErrorMessage } from "@/lib/auth/auth-errors";
+import { CACHE_CONTROL } from "@/lib/constants";
+import { m } from "@/paraglide/messages";
 
 export const Route = createFileRoute("/_public")({
+  loader: ({ context }) => ({
+    preloadImages: getThemePreloadImages(context.siteConfig),
+  }),
   component: PublicLayout,
   headers: () => {
     return CACHE_CONTROL.public;
   },
+  head: ({ loaderData }) => ({
+    links: (loaderData?.preloadImages ?? []).map((href) => ({
+      rel: "preload" as const,
+      as: "image",
+      href,
+    })),
+  }),
 });
 
 function PublicLayout() {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const navigate = useNavigate();
-
-  const navOptions = [
-    { label: "主页", to: "/" as const, id: "home" },
-    { label: "文章", to: "/posts" as const, id: "posts" },
-  ];
-
   const { data: session, isPending: isSessionPending } =
     authClient.useSession();
   const queryClient = useQueryClient();
+
+  const navOptions = [
+    { label: m.nav_home(), to: "/" as const, id: "home" },
+    { label: m.nav_posts(), to: "/posts" as const, id: "posts" },
+    {
+      label: m.nav_friend_links(),
+      to: "/friend-links" as const,
+      id: "friend-links",
+    },
+  ];
+
   const logout = async () => {
     const { error } = await authClient.signOut();
     if (error) {
-      toast.error("会话终止失败, 请稍后重试。", {
-        description: error.message,
+      toast.error(m.auth_logout_failed(), {
+        description:
+          getLogoutAuthErrorMessage(error, m) ?? m.auth_logout_failed_desc(),
       });
       return;
     }
 
     queryClient.removeQueries({ queryKey: AUTH_KEYS.session });
 
-    toast.success("会话已终止", {
-      description: "你已安全退出当前会话。",
+    toast.success(m.auth_logout_success(), {
+      description: m.auth_logout_success_desc(),
     });
   };
+
   // Global shortcut: Cmd/Ctrl + K to navigate to search
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -50,7 +67,6 @@ function PublicLayout() {
       if (isToggle) {
         e.preventDefault();
         navigate({ to: "/search" });
-        setIsMenuOpen(false);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -58,29 +74,16 @@ function PublicLayout() {
   }, [navigate]);
 
   return (
-    <div className="min-h-screen font-sans relative antialiased">
-      {/* --- Minimalist Background --- */}
-      <button className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(0,0,0,0.03)_0%,transparent_70%)] in-[.dark]:bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.02)_0%,transparent_70%)]"></div>
-      </button>
-
-      <Navbar
-        onMenuClick={() => setIsMenuOpen(true)}
-        user={session?.user}
-        isLoading={isSessionPending}
+    <>
+      <theme.PublicLayout
         navOptions={navOptions}
-      />
-      <MobileMenu
-        isOpen={isMenuOpen}
-        onClose={() => setIsMenuOpen(false)}
         user={session?.user}
+        isSessionLoading={isSessionPending}
         logout={logout}
-        navOptions={navOptions}
-      />
-      <main className="flex flex-col min-h-screen relative z-10">
+      >
         <Outlet />
-      </main>
-      <Footer />
-    </div>
+      </theme.PublicLayout>
+      <theme.Toaster />
+    </>
   );
 }

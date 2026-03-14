@@ -1,22 +1,19 @@
-import { useQueryErrorResetBoundary } from "@tanstack/react-query";
-import {
-  Outlet,
-  createFileRoute,
-  redirect,
-  useRouter,
-} from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
+import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
+import theme from "@theme";
 import { useEffect } from "react";
-
+import { toast } from "sonner";
 import { ErrorPage } from "@/components/common/error-page";
+import { AUTH_KEYS, sessionQuery } from "@/features/auth/queries";
+import { authClient } from "@/lib/auth/auth.client";
+import { getLogoutAuthErrorMessage } from "@/lib/auth/auth-errors";
 import { CACHE_CONTROL } from "@/lib/constants";
-import { sessionQuery } from "@/features/auth/queries";
+import { m } from "@/paraglide/messages";
 
 export const Route = createFileRoute("/_user")({
-  beforeLoad: async ({ context }) => {
-    const session = await context.queryClient.ensureQueryData(sessionQuery);
-    if (!session?.user) {
-      throw redirect({ to: "/login" });
-    }
+  loader: async ({ context }) => {
+    const session = await context.queryClient.fetchQuery(sessionQuery);
+    return { session };
   },
   component: UserLayout,
   errorComponent: ({ error }) => <ErrorPage error={error} />,
@@ -26,27 +23,63 @@ export const Route = createFileRoute("/_user")({
 });
 
 function UserLayout() {
-  const router = useRouter();
-  const { reset } = useQueryErrorResetBoundary();
+  const { session } = Route.useLoaderData();
+  const navigate = useNavigate();
+  const { isPending: isSessionPending } = authClient.useSession();
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    // Reset query errors on route change
-    router.subscribe("onBeforeLoad", () => {
-      reset();
+  const navOptions = [
+    { label: m.nav_home(), to: "/" as const, id: "home" },
+    { label: m.nav_posts(), to: "/posts" as const, id: "posts" },
+    {
+      label: m.nav_friend_links(),
+      to: "/friend-links" as const,
+      id: "friend-links",
+    },
+  ];
+
+  const logout = async () => {
+    const { error } = await authClient.signOut();
+    if (error) {
+      toast.error(m.auth_logout_failed(), {
+        description:
+          getLogoutAuthErrorMessage(error, m) ?? m.auth_logout_failed_desc(),
+      });
+      return;
+    }
+
+    queryClient.removeQueries({ queryKey: AUTH_KEYS.session });
+
+    toast.success(m.auth_logout_success(), {
+      description: m.auth_logout_success_desc(),
     });
-  }, [router, reset]);
+  };
+
+  // Global shortcut: Cmd/Ctrl + K to navigate to search
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const isToggle = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k";
+      if (isToggle) {
+        e.preventDefault();
+        navigate({ to: "/search" });
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [navigate]);
 
   return (
-    <div className="min-h-screen font-sans relative antialiased">
-      {/* --- Minimalist Background (Same as Public for consistency, or slightly different?) --- */}
-      {/* Let's keep it consistent but maybe darker/cleaner since no Navbar */}
-      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(0,0,0,0.03)_0%,transparent_70%)] in-[.dark]:bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.02)_0%,transparent_70%)]"></div>
-      </div>
-
-      <main className="relative z-10">
+    <>
+      <theme.UserLayout
+        isAuthenticated={!!session?.user}
+        navOptions={navOptions}
+        user={session?.user}
+        isSessionLoading={isSessionPending}
+        logout={logout}
+      >
         <Outlet />
-      </main>
-    </div>
+      </theme.UserLayout>
+      <theme.Toaster />
+    </>
   );
 }

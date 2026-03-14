@@ -1,13 +1,9 @@
-import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { baseMiddleware, rateLimitMiddleware } from "@/lib/hono/middlewares";
-import {
-  createRateLimiterIdentifier,
-  getServiceContext,
-  setCacheHeaders,
-} from "@/lib/hono/helper";
+import { Hono } from "hono";
 import { FindPostBySlugInputSchema } from "@/features/posts/posts.schema";
 import * as PostService from "@/features/posts/posts.service";
+import { getServiceContext, setCacheHeaders } from "@/lib/hono/helper";
+import { baseMiddleware } from "@/lib/hono/middlewares";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -15,11 +11,6 @@ app.use("*", baseMiddleware);
 
 const route = app.get(
   "/:slug",
-  rateLimitMiddleware({
-    capacity: 30,
-    interval: "1m",
-    identifier: createRateLimiterIdentifier,
-  }),
   zValidator("param", FindPostBySlugInputSchema),
   async (c) => {
     const { slug } = c.req.valid("param");

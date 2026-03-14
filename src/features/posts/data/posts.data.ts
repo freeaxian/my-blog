@@ -11,13 +11,13 @@ import {
   sql,
 } from "drizzle-orm";
 import type { SortDirection, SortField } from "@/features/posts/data/helper";
-import type { PostStatus, Tag } from "@/lib/db/schema";
-import type { PostListItem } from "@/features/posts/posts.schema";
 import {
   buildPostOrderByClause,
   buildPostWhereClause,
 } from "@/features/posts/data/helper";
-import { PostTagsTable, PostsTable, TagsTable } from "@/lib/db/schema";
+import type { PostListItem } from "@/features/posts/posts.schema";
+import type { PostStatus, Tag } from "@/lib/db/schema";
+import { PostsTable, PostTagsTable, TagsTable } from "@/lib/db/schema";
 
 const DEFAULT_PAGE_SIZE = 12;
 
@@ -258,6 +258,22 @@ export async function updatePost(
   return await findPostById(db, id);
 }
 
+export async function updatePublicContentSnapshot(
+  db: DB,
+  id: number,
+  publicContentJson: typeof PostsTable.$inferInsert.publicContentJson,
+) {
+  await db
+    .update(PostsTable)
+    .set({
+      publicContentJson,
+      // Snapshot rebuilds should not affect editorial ordering/history.
+      updatedAt: sql`${PostsTable.updatedAt}`,
+    })
+    .where(eq(PostsTable.id, id));
+  return await findPostById(db, id);
+}
+
 export async function deletePost(db: DB, id: number) {
   await db.delete(PostsTable).where(eq(PostsTable.id, id));
 }
@@ -374,4 +390,46 @@ export async function getPublicPostsByIds(db: DB, ids: Array<number>) {
     .where(and(inArray(PostsTable.id, ids), whereClause));
 
   return posts;
+}
+
+/**
+ * Fetch full post data (including tags and content) for export or other detailed use cases.
+ * Uses Drizzle relational queries for efficiency.
+ */
+export async function findFullPosts(
+  db: DB,
+  options: {
+    ids?: Array<number>;
+    status?: PostStatus;
+  } = {},
+) {
+  const { ids, status } = options;
+  const conditions = [];
+
+  if (ids && ids.length > 0) {
+    conditions.push(inArray(PostsTable.id, ids));
+  }
+  if (status) {
+    conditions.push(eq(PostsTable.status, status));
+  }
+
+  const results = await db.query.PostsTable.findMany({
+    where: conditions.length > 0 ? and(...conditions) : undefined,
+    with: {
+      postTags: {
+        with: {
+          tag: true,
+        },
+      },
+    },
+    orderBy: [desc(PostsTable.createdAt)],
+  });
+
+  return results.map((post) => {
+    const { postTags, ...rest } = post;
+    return {
+      ...rest,
+      tags: postTags.map((pt) => pt.tag),
+    };
+  });
 }

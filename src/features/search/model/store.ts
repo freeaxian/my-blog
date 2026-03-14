@@ -1,5 +1,5 @@
-import { load, save } from "@orama/orama";
 import type { RawData } from "@orama/orama";
+import { load, save } from "@orama/orama";
 import type { MyOramaDB } from "@/features/search/model/schema";
 import { createMyDb } from "@/features/search/model/schema";
 
@@ -64,7 +64,12 @@ async function loadFromKv(env: Env): Promise<MyOramaDB | null> {
     await load(db, raw);
     return db;
   } catch (error) {
-    console.error("Failed to load Orama index from KV", error);
+    console.error(
+      JSON.stringify({
+        message: "orama index load failed",
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
     return null;
   }
 }
