@@ -1,4 +1,4 @@
-import type { PostItem } from "@/features/posts/posts.schema";
+import type { PostItem } from "@/features/posts/schema/posts.schema";
 import { ArchivePost } from "./archive-post";
 import { ArchiveYear } from "./archive-year";
 
@@ -9,7 +9,11 @@ interface ArchivePanelProps {
 export function ArchivePanel({ posts }: ArchivePanelProps) {
   const groupedPosts = posts.reduce(
     (acc, post) => {
-      const year = new Date(post.publishedAt || "").getFullYear();
+      if (!post.publishedAt) {
+        return acc;
+      }
+
+      const year = new Date(post.publishedAt).getUTCFullYear();
       acc[year] ??= [];
       acc[year].push(post);
       return acc;

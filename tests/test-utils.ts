@@ -1,8 +1,8 @@
 import {
   createExecutionContext,
-  env,
   waitOnExecutionContext,
 } from "cloudflare:test";
+import { env } from "cloudflare:workers";
 import { vi } from "vitest";
 import { getDb } from "@/lib/db";
 import * as schema from "@/lib/db/schema";
@@ -76,7 +76,18 @@ export function createMockAdminSession(): AuthContext["session"] {
 }
 
 export function createMockExecutionCtx(): ExecutionContext {
-  return createExecutionContext();
+  const ctx = createExecutionContext();
+  executionContexts.add(ctx);
+  return ctx;
+}
+
+const executionContexts = new Set<ExecutionContext>();
+
+export async function drainTestExecutionContexts() {
+  await Promise.all(
+    [...executionContexts].map((ctx) => waitOnExecutionContext(ctx)),
+  );
+  executionContexts.clear();
 }
 
 /**
@@ -112,7 +123,26 @@ export function createTestContext(
     >,
   );
 
-  vi.spyOn(context.env.QUEUE, "send").mockResolvedValue();
+  vi.spyOn(context.env.POST_AUTO_SNAPSHOT_WORKFLOW, "create").mockResolvedValue(
+    mockWorkflowInstance as unknown as Awaited<
+      ReturnType<Env["POST_AUTO_SNAPSHOT_WORKFLOW"]["create"]>
+    >,
+  );
+  vi.spyOn(
+    context.env.POST_AUTO_SNAPSHOT_WORKFLOW,
+    "createBatch",
+  ).mockResolvedValue([mockWorkflowInstance] as unknown as Awaited<
+    ReturnType<Env["POST_AUTO_SNAPSHOT_WORKFLOW"]["createBatch"]>
+  >);
+
+  vi.spyOn(context.env.QUEUE, "send").mockResolvedValue({
+    metadata: {
+      metrics: {
+        backlogBytes: 0,
+        backlogCount: 0,
+      },
+    },
+  });
 
   vi.spyOn(context.env.SCHEDULED_PUBLISH_WORKFLOW, "get").mockResolvedValue({
     ...mockWorkflowInstance,
@@ -126,6 +156,12 @@ export function createTestContext(
       ReturnType<Env["SCHEDULED_PUBLISH_WORKFLOW"]["create"]>
     >,
   );
+  vi.spyOn(
+    context.env.SCHEDULED_PUBLISH_WORKFLOW,
+    "createBatch",
+  ).mockResolvedValue([mockWorkflowInstance] as unknown as Awaited<
+    ReturnType<Env["SCHEDULED_PUBLISH_WORKFLOW"]["createBatch"]>
+  >);
 
   return context;
 }

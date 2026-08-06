@@ -1,8 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
-import type { PostListItem } from "@/features/posts/posts.schema";
 import { POSTS_KEYS } from "@/features/posts/queries";
+import type { PostListItem } from "@/features/posts/schema/posts.schema";
 import { m } from "@/paraglide/messages";
 
 export function PostPageSkeleton() {
@@ -16,7 +16,7 @@ export function PostPageSkeleton() {
     .map(([, data]) => data)
     .filter(Boolean)
     .flatMap((data) => {
-      // Handle regular arrays (e.g. from featuredPostsQuery)
+      // Handle regular arrays (e.g. from recentPostsQuery)
       if (Array.isArray(data)) {
         return data as Array<PostListItem>;
       }

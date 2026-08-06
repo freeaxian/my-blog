@@ -1,8 +1,10 @@
+import { createAuthMiddleware } from "@better-auth/core/api";
+import { APIError } from "@better-auth/core/error";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { betterAuth } from "better-auth/minimal";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AuthEmail } from "@/features/email/templates/AuthEmail";
-import { authConfig } from "@/lib/auth/auth.config";
+import { createAuthConfig } from "@/lib/auth/auth.config";
 import * as authSchema from "@/lib/db/schema/auth.table";
 import { serverEnv } from "@/lib/env/server.env";
 import type { Locale } from "@/lib/i18n";
@@ -51,12 +53,29 @@ export function getAuth({ db, env }: { db: DB; env: Env }) {
   }
 
   return betterAuth({
-    ...authConfig,
+    ...createAuthConfig(),
     socialProviders: {
       github: {
         clientId: GITHUB_CLIENT_ID,
         clientSecret: GITHUB_CLIENT_SECRET,
       },
+    },
+    hooks: {
+      before: createAuthMiddleware(async (ctx) => {
+        if (ctx.path !== "/sign-up/email") return;
+
+        const email =
+          typeof ctx.body?.email === "string" ? ctx.body.email.trim() : "";
+        if (!email) return;
+
+        const allowed = await checkEmailRateLimit(env, "email-signup", email);
+        if (allowed) return;
+
+        throw APIError.from("BAD_REQUEST", {
+          code: "RATE_LIMITED",
+          message: "Too many sign up attempts",
+        });
+      }),
     },
     emailAndPassword: {
       enabled: true,

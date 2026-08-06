@@ -1,5 +1,13 @@
 import { z } from "zod";
 import type { Messages } from "@/lib/i18n";
+import { SOCIAL_PLATFORM_KEYS } from "./utils/social-platforms";
+
+export const SocialLinkSchema = z.object({
+  platform: z.enum(SOCIAL_PLATFORM_KEYS),
+  url: z.string(),
+  icon: z.string().optional(),
+  label: z.string().optional(),
+});
 
 export const DEFAULT_THEME_OPACITY_MIN = 0;
 export const DEFAULT_THEME_OPACITY_MAX = 0.4;
@@ -21,28 +29,6 @@ function createSiteTextFormSchema(max: number, messages: Messages) {
     .max(max, messages.settings_site_validation_too_long({ max }));
 }
 
-function createUrlSchema() {
-  return z.union([z.url(), z.literal("")]);
-}
-
-function createUrlFormSchema(messages: Messages) {
-  return z.union([
-    z.url(messages.settings_site_validation_invalid_url()),
-    z.literal(""),
-  ]);
-}
-
-function createEmailSchema() {
-  return z.union([z.email(), z.literal("")]);
-}
-
-function createEmailFormSchema(messages: Messages) {
-  return z.union([
-    z.email(messages.settings_site_validation_invalid_email()),
-    z.literal(""),
-  ]);
-}
-
 function createAssetRefSchema() {
   return z.string().refine((value) => value === "" || value.startsWith("/"), {
     message: "Please enter a root-relative path",
@@ -53,6 +39,42 @@ function createAssetRefFormSchema(messages: Messages) {
   return z.string().refine((value) => value === "" || value.startsWith("/"), {
     message: messages.settings_site_validation_invalid_asset_ref(),
   });
+}
+
+function isExternalImageUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function createBackgroundImageRefSchema() {
+  return z
+    .string()
+    .trim()
+    .refine(
+      (value) =>
+        value === "" || value.startsWith("/") || isExternalImageUrl(value),
+      {
+        message: "Please enter a root-relative path or http(s) URL",
+      },
+    );
+}
+
+function createBackgroundImageRefFormSchema(messages: Messages) {
+  return z
+    .string()
+    .trim()
+    .refine(
+      (value) =>
+        value === "" || value.startsWith("/") || isExternalImageUrl(value),
+      {
+        message:
+          messages.settings_site_validation_invalid_background_image_ref(),
+      },
+    );
 }
 
 function createAssetPathSchema() {
@@ -151,8 +173,8 @@ function createHueFormSchema(messages: Messages) {
 
 function createDefaultThemeBackgroundSchema() {
   return z.object({
-    homeImage: createAssetRefSchema(),
-    globalImage: createAssetRefSchema(),
+    homeImage: createBackgroundImageRefSchema(),
+    globalImage: createBackgroundImageRefSchema(),
     light: z.object({
       opacity: createOpacitySchema(),
     }),
@@ -166,8 +188,8 @@ function createDefaultThemeBackgroundSchema() {
 
 function createDefaultThemeBackgroundInputSchema() {
   return z.object({
-    homeImage: createAssetRefSchema().optional(),
-    globalImage: createAssetRefSchema().optional(),
+    homeImage: createBackgroundImageRefSchema().optional(),
+    globalImage: createBackgroundImageRefSchema().optional(),
     light: z
       .object({
         opacity: createOpacitySchema().optional(),
@@ -185,8 +207,8 @@ function createDefaultThemeBackgroundInputSchema() {
 
 function createDefaultThemeBackgroundInputFormSchema(messages: Messages) {
   return z.object({
-    homeImage: createAssetRefFormSchema(messages).optional(),
-    globalImage: createAssetRefFormSchema(messages).optional(),
+    homeImage: createBackgroundImageRefFormSchema(messages).optional(),
+    globalImage: createBackgroundImageRefFormSchema(messages).optional(),
     light: z
       .object({
         opacity: createOpacityFormSchema(messages).optional(),
@@ -226,7 +248,7 @@ function createDefaultThemeSiteConfigInputFormSchema(messages: Messages) {
 
 function createFuwariThemeSiteConfigSchema() {
   return z.object({
-    homeBg: createAssetRefSchema(),
+    homeBg: createBackgroundImageRefSchema(),
     avatar: createAssetRefSchema(),
     primaryHue: createHueSchema(),
   });
@@ -234,7 +256,7 @@ function createFuwariThemeSiteConfigSchema() {
 
 function createFuwariThemeSiteConfigInputSchema() {
   return z.object({
-    homeBg: createAssetRefSchema().optional(),
+    homeBg: createBackgroundImageRefSchema().optional(),
     avatar: createAssetRefSchema().optional(),
     primaryHue: createHueSchema().optional(),
   });
@@ -242,7 +264,7 @@ function createFuwariThemeSiteConfigInputSchema() {
 
 function createFuwariThemeSiteConfigInputFormSchema(messages: Messages) {
   return z.object({
-    homeBg: createAssetRefFormSchema(messages).optional(),
+    homeBg: createBackgroundImageRefFormSchema(messages).optional(),
     avatar: createAssetRefFormSchema(messages).optional(),
     primaryHue: createHueFormSchema(messages).optional(),
   });
@@ -264,10 +286,7 @@ export const FullSiteConfigSchema = z.object({
   title: createSiteTextSchema(120),
   author: createSiteTextSchema(80),
   description: createSiteTextSchema(300),
-  social: z.object({
-    github: createUrlSchema(),
-    email: createEmailSchema(),
-  }),
+  social: z.array(SocialLinkSchema),
   icons: z.object({
     faviconSvg: createAssetPathSchema(),
     faviconIco: createAssetPathSchema(),
@@ -287,12 +306,7 @@ export function createSiteConfigInputFormSchema(messages: Messages) {
     title: createSiteTextFormSchema(120, messages).optional(),
     author: createSiteTextFormSchema(80, messages).optional(),
     description: createSiteTextFormSchema(300, messages).optional(),
-    social: z
-      .object({
-        github: createUrlFormSchema(messages).optional(),
-        email: createEmailFormSchema(messages).optional(),
-      })
-      .optional(),
+    social: z.array(SocialLinkSchema).optional(),
     icons: z
       .object({
         faviconSvg: createOptionalAssetPathFormSchema(messages).optional(),
@@ -317,12 +331,7 @@ export const SiteConfigInputSchema = z.object({
   title: createSiteTextSchema(120).optional(),
   author: createSiteTextSchema(80).optional(),
   description: createSiteTextSchema(300).optional(),
-  social: z
-    .object({
-      github: createUrlSchema().optional(),
-      email: createEmailSchema().optional(),
-    })
-    .optional(),
+  social: z.array(SocialLinkSchema).optional(),
   icons: z
     .object({
       faviconSvg: createOptionalAssetPathSchema().optional(),

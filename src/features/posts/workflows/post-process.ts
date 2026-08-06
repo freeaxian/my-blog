@@ -2,8 +2,8 @@ import type { WorkflowEvent, WorkflowStep } from "cloudflare:workers";
 import { WorkflowEntrypoint } from "cloudflare:workers";
 import * as CacheService from "@/features/cache/cache.service";
 import * as PostRepo from "@/features/posts/data/posts.data";
-import { POSTS_CACHE_KEYS } from "@/features/posts/posts.schema";
-import * as PostService from "@/features/posts/posts.service";
+import { POSTS_CACHE_KEYS } from "@/features/posts/schema/posts.schema";
+import * as PostService from "@/features/posts/services/posts.service";
 import { highlightCodeBlocks } from "@/features/posts/utils/content";
 import { calculatePostHash } from "@/features/posts/utils/sync";
 import {
@@ -52,6 +52,7 @@ export class PostProcessWorkflow extends WorkflowEntrypoint<Env, Params> {
           tagIds: p.tags.map((t) => t.id),
           slug: p.slug,
           publishedAt: p.publishedAt,
+          pinnedAt: p.pinnedAt,
           readTimeInMinutes: p.readTimeInMinutes,
         });
         const oldHash = await CacheService.getRaw(
@@ -136,6 +137,7 @@ export class PostProcessWorkflow extends WorkflowEntrypoint<Env, Params> {
         tagIds: p.tags.map((t) => t.id),
         slug: p.slug,
         publishedAt: p.publishedAt,
+        pinnedAt: p.pinnedAt,
         readTimeInMinutes: p.readTimeInMinutes,
       });
       await CacheService.set(
